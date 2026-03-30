@@ -1199,6 +1199,217 @@ namespace trieste
       }
     };
 
+
+    // TODO: Check if this should inherit some form of intrusive pointer and
+    // how they are supposed to be used
+    class PatternNodeDef
+    {
+      private:
+        Node node;
+
+      public:
+        PatternNodeDef(TokenDef token) : node(token){};
+        PatternNodeDef(Token token) : node(token){};
+      
+        operator Node&() { return node; }
+        operator Node() const { return node; }
+
+        void push_back(PatternNodeDef child)
+        {
+          node->push_back(child);
+        }
+
+        void push_back(Node child)
+        {
+          node->push_back(child);
+        }
+
+        template<typename F>
+        PatternNodeDef operator()(F&& action) const
+        {
+          // TODO
+          return *this;
+        }
+
+        PatternNodeDef operator[](const trieste::Token& name) const
+        {
+          PatternNodeDef cap = PatternNodeDef(reified::Cap);
+          PatternNodeDef group = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          group.node->push_back(this);
+          group.node->push_back(group);
+          cap.node->push_back(NodeDef::create(reified::Token, Location(name.str())));
+
+          parent->pop_back();
+          parent->push_back(cap);
+
+          return cap;
+        }
+
+        PatternNodeDef operator~() const 
+        {
+          PatternNodeDef opt = PatternNodeDef(reified::Opt);
+          PatternNodeDef group = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          group.node->push_back(this);
+          opt.node->push_back(group);
+
+          parent->pop_back();
+          parent->push_back(opt);
+
+          return opt;
+        }
+
+        PatternNodeDef operator++() const 
+        {
+          PatternNodeDef pred = PatternNodeDef(reified::Pred);
+          PatternNodeDef group = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          group.node->push_back(this);
+          pred.node->push_back(group);
+
+          parent->pop_back();
+          parent->push_back(pred);
+          
+          return pred;
+        }
+
+        PatternNodeDef operator--() const 
+        {
+          PatternNodeDef neg_pred = PatternNodeDef(reified::NegPred);
+          PatternNodeDef group = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          group.node->push_back(this);
+          neg_pred.node->push_back(group);
+
+          parent->pop_back();
+          parent->push_back(neg_pred);
+          
+          return neg_pred;
+        }
+
+        PatternNodeDef operator++(int) const 
+        {
+          // Is this enough to reproduce the pattern properly?
+          PatternNodeDef rep = PatternNodeDef(reified::Rep);
+          PatternNodeDef group = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          group.node->push_back(this);
+          rep.node->push_back(group);
+
+          parent->pop_back();
+          parent->push_back(rep);
+          
+          return rep;
+        }
+
+        PatternNodeDef operator!() const
+        {
+          PatternNodeDef not_node = PatternNodeDef(reified::Not);
+          PatternNodeDef group = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          group.node->push_back(this);
+          not_node.node->push_back(group);
+          
+          parent->pop_back();
+          parent->push_back(not_node);
+
+          return not_node;
+        }
+
+        PatternNodeDef operator*(PatternNodeDef rhs) const
+        {
+          Node lhs_parent = node->parent();
+          if (lhs_parent)
+          {
+            lhs_parent->push_back(rhs);
+            return *this;
+          }
+
+          Node rhs_parent = rhs.node->parent();
+          if (rhs_parent) 
+          {
+            rhs_parent->push_back(this);
+            return rhs;
+          }
+
+          // Should be unreachable for standard use since T() and In() always produces 
+          // the root node
+          Node top = Top;
+          Node group = Group;
+
+          group->push_back(this);
+          group->push_back(rhs);
+          top->push_back(group);
+
+          return rhs;
+        }
+
+        PatternNodeDef operator/(PatternNodeDef rhs) const
+        {
+          if (node == reified::TokenMatch && rhs == reified::TokenMatch) {
+            PatternNodeDef match = PatternNodeDef(reified::TokenMatch);
+
+            for(auto child : *node)
+            {
+              match.push_back(child);
+            }
+
+            for(auto child : *rhs.node) 
+            {
+              match.push_back(child);
+            }
+
+            Node parent = node->parent();
+            parent->pop_back();
+            parent->push_back(match);
+
+            return match;
+          }
+
+          PatternNodeDef choice = PatternNodeDef(reified::Choice);
+          PatternNodeDef group1 = PatternNodeDef(Group);
+          PatternNodeDef group2 = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          group1.push_back(node);
+          group2.push_back(rhs);
+
+          choice.push_back(group1);
+          choice.push_back(group2);
+
+          parent->pop_back();
+          parent->push_back(choice);
+
+          return choice;
+        }
+
+        PatternNodeDef operator<<(PatternNodeDef rhs) const
+        {
+          PatternNodeDef children_node = PatternNodeDef(reified::Children);
+          PatternNodeDef parent_group = PatternNodeDef(Group);
+          PatternNodeDef children_group = PatternNodeDef(Group);
+          Node parent = node->parent();
+
+          parent_group.push_back(node);
+          children_group.push_back(rhs);
+
+          children_node.push_back(parent_group);
+          children_node.push_back(children_group);
+
+          parent->pop_back();
+          parent->push_back(children_node);
+
+          return children_node;
+        }
+    };
+
     template<typename T>
     using PatternEffect = std::pair<Located<Pattern>, Effect<T>>;
 
@@ -1244,13 +1455,15 @@ namespace trieste
     };
   }
 
+  // TODO: Change to {PatternNode, PatternEffect}
   template<typename F>
-  inline auto operator>>(detail::Located<detail::Pattern> pattern, F effect)
+  inline auto operator>>(detail::Located<detail::PatternNodeDef> pattern, F effect)
     -> detail::PatternEffect<decltype(effect(std::declval<Match&>()))>
   {
     return {pattern, effect};
   }
 
+  // TODO: Change to PatternNode
   inline const auto Any = detail::Pattern(
     intrusive_ptr<detail::Anything>::make(), detail::FastPattern::match_any());
   inline const auto Start = detail::Pattern(
@@ -1258,38 +1471,74 @@ namespace trieste
   inline const auto End = detail::Pattern(
     intrusive_ptr<detail::Last>::make(), detail::FastPattern::match_pred());
 
-  inline detail::Pattern T(const Token& type)
+
+  // TODO: T() and In() produces Top->Group->TokenMatch/Inside 
+  // but *, / and << throws out the Top->Group of the rhs. Check for memory leaks
+  // or find a better way to do it.
+
+  inline detail::PatternNodeDef T(const Token& type)
   {
-    std::vector<Token> types = {type};
-    return detail::Pattern(
-      intrusive_ptr<detail::TokenMatch>::make(types),
-      detail::FastPattern::match_token({type}));
+    detail::PatternNodeDef top = detail::PatternNodeDef(Top);
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+    top.push_back(group);
+
+    detail::PatternNodeDef match = detail::PatternNodeDef(reified::TokenMatch);
+    group.push_back(match);
+    match.push_back(NodeDef::create(reified::Token, Location(type.str())));
+
+    return match;
   }
 
   template<typename... Ts>
-  inline detail::Pattern
+  inline detail::PatternNodeDef
   T(const Token& type1, const Token& type2, const Ts&... types)
   {
-    std::vector<Token> types_ = {type1, type2, types...};
-    return detail::Pattern(
-      intrusive_ptr<detail::TokenMatch>::make(types_),
-      detail::FastPattern::match_token({type1, type2, types...}));
+    detail::PatternNodeDef top = detail::PatternNodeDef(Top);
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+    top.push_back(group);
+
+    detail::PatternNodeDef match = detail::PatternNodeDef(reified::TokenMatch);
+    group.push_back(match);
+    
+    for (const auto& t : {type1, type2, types...})
+    {
+      match.push_back(NodeDef::create(reified::Token, Location(t.str())));
+    }
+
+    return match;
   }
 
-  inline detail::Pattern T(const Token& type, const std::string& r)
+  inline detail::PatternNodeDef T(const Token& type, const std::string& r)
   {
-    return detail::Pattern(
-      intrusive_ptr<detail::RegexMatch>::make(type, r),
-      detail::FastPattern::match_token({type}));
+    detail::PatternNodeDef top = detail::PatternNodeDef(Top);
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+    top.push_back(group);
+
+    detail::PatternNodeDef match = detail::PatternNodeDef(reified::RegexMatch);
+    match.push_back(NodeDef::create(reified::Token, Location(type.str())));
+    match.push_back(NodeDef::create(reified::Regex, Location(r)));
+
+    group.push_back(match);
+
+    return match;
   }
 
   template<typename... Ts>
-  inline detail::Pattern In(const Token& type1, const Ts&... types)
+  inline detail::PatternNodeDef In(const Token& type1, const Ts&... types)
   {
-    std::array<Token, 1 + sizeof...(types)> types_ = {type1, types...};
-    return detail::Pattern(
-      intrusive_ptr<detail::Inside<1 + sizeof...(types)>>::make(types_),
-      detail::FastPattern::match_parent({type1, types...}));
+    detail::PatternNodeDef top = detail::PatternNodeDef(Top);
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+    top.push_back(group);
+
+    detail::PatternNodeDef inside = detail::PatternNodeDef(reified::Inside);
+    for (const auto& type : {type1, types ...})
+    {
+      inside.push_back(NodeDef::create(reified::Token, Location(type.str())))
+    }
+
+    group.push_back(inside);
+
+    return inside;
   }
 
   inline detail::EphemeralNode operator-(Node node)
