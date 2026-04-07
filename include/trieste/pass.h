@@ -34,6 +34,8 @@ namespace trieste
     const wf::Wellformed& wf_ = wf::empty;
     dir::flag direction_;
 
+    std::vector<detail::PatternTreeEffect<Node>> uncompiled_rules_;
+
     std::vector<detail::PatternEffect<Node>> rules_;
     detail::DefaultMap<
       detail::DefaultMap<std::vector<detail::PatternEffect<Node>>>>
@@ -55,16 +57,16 @@ namespace trieste
 
     PassDef(dir::flag direction = dir::topdown) : direction_(direction) {}
 
-    PassDef(const std::initializer_list<detail::PatternEffect<Node>>& r)
-    : direction_(dir::topdown), rules_(r)
+    PassDef(const std::initializer_list<detail::PatternTreeEffect<Node>>& r)
+    : direction_(dir::topdown), uncompiled_rules_(r)
     {
       compile_rules();
     }
 
     PassDef(
       dir::flag direction,
-      const std::initializer_list<detail::PatternEffect<Node>>& r)
-    : direction_(direction), rules_(r)
+      const std::initializer_list<detail::PatternTreeEffect<Node>>& r)
+    : direction_(direction), uncompiled_rules_(r)
     {
       compile_rules();
     }
@@ -72,8 +74,8 @@ namespace trieste
     PassDef(
       const std::string& name,
       const wf::Wellformed& wf,
-      const std::initializer_list<detail::PatternEffect<Node>>& r)
-    : name_(name), wf_(wf), direction_(dir::topdown), rules_(r)
+      const std::initializer_list<detail::PatternTreeEffect<Node>>& r)
+    : name_(name), wf_(wf), direction_(dir::topdown), uncompiled_rules_(r)
     {
       compile_rules();
     }
@@ -82,8 +84,8 @@ namespace trieste
       const std::string& name,
       const wf::Wellformed& wf,
       dir::flag direction,
-      const std::initializer_list<detail::PatternEffect<Node>>& r)
-    : name_(name), wf_(wf), direction_(direction), rules_(r)
+      const std::initializer_list<detail::PatternTreeEffect<Node>>& r)
+    : name_(name), wf_(wf), direction_(direction), uncompiled_rules_(r)
     {
       compile_rules();
     }
@@ -148,16 +150,30 @@ namespace trieste
     template<typename... Ts>
     void rules(Ts... r)
     {
-      std::vector<detail::PatternEffect<Node>> rules = {r...};
-      rules_.insert(rules_.end(), rules.begin(), rules.end());
+      std::vector<detail::PatternTreeEffect<Node>> rules = {r...};
+      uncompiled_rules_.insert(uncompiled_rules_.end(), rules.begin(), rules.end());
       compile_rules();
     }
 
     void rules(const std::initializer_list<detail::PatternEffect<Node>>& r)
     {
-      rules_.insert(rules_.end(), r.begin(), r.end());
+      uncompiled_rules_.insert(uncompiled_rules_.end(), r.begin(), r.end());
       compile_rules();
     }
+
+    // template<typename... Ts>
+    // void rules(Ts... r)
+    // {
+    //   std::vector<detail::PatternEffect<Node>> rules = {r...};
+    //   rules_.insert(rules_.end(), rules.begin(), rules.end());
+    //   compile_rules();
+    // }
+
+    // void rules(const std::initializer_list<detail::PatternEffect<Node>>& r)
+    // {
+    //   rules_.insert(rules_.end(), r.begin(), r.end());
+    //   compile_rules();
+    // }
 
     std::tuple<Node, size_t, size_t> run(Node node)
     {
@@ -212,6 +228,12 @@ namespace trieste
     void compile_rules()
     {
       rule_map.clear();
+      rules_.clear();
+
+      for(detail::PatternTreeEffect<Node> u_rule : uncompiled_rules_)
+      {
+        rules_.push_back(u_rule.compile());
+      }
 
       for (auto& rule : rules_)
       {

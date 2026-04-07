@@ -136,30 +136,30 @@ namespace
             return Float ^ std::to_string(lhs / rhs);
           },
 
-        T(Expression) << (T(Ref) << T(Ident)[Id])(
-          [](auto& n) { return can_replace(n); }) >>
-          [](Match& _) {
-            auto defs = _(Id)->lookup();
-            auto assign = defs.front();
-            // the assign node has two children: the ident, and its value
-            // this returns the second
-            return assign->back()->clone();
-          },
+        // T(Expression) << (T(Ref) << T(Ident)[Id])(
+        //   [](auto& n) { return can_replace(n); }) >>
+        //   [](Match& _) {
+        //     auto defs = _(Id)->lookup();
+        //     auto assign = defs.front();
+        //     // the assign node has two children: the ident, and its value
+        //     // this returns the second
+        //     return assign->back()->clone();
+        //   },
 
         T(Expression) << (T(Int) / T(Float))[Rhs] >>
           [](Match& _) { return Literal << _(Rhs); },
 
         // errors
 
-        T(Expression) << (T(Ref) << T(Ident)[Id])(
-          [](auto& n) { return !exists(n); }) >>
-          [](Match&) {
-            // NB this case shouldn't happen at all
-            // during this pass and as such is not
-            // an error, but currently occurs during
-            // generative testing.
-            return Literal << (Int ^ "0");
-          },
+        // T(Expression) << (T(Ref) << T(Ident)[Id])(
+        //   [](auto& n) { return !exists(n); }) >>
+        //   [](Match&) {
+        //     // NB this case shouldn't happen at all
+        //     // during this pass and as such is not
+        //     // an error, but currently occurs during
+        //     // generative testing.
+        //     return Literal << (Int ^ "0");
+        //   },
       }};
   }
 
