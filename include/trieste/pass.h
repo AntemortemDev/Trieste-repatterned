@@ -155,7 +155,7 @@ namespace trieste
       compile_rules();
     }
 
-    void rules(const std::initializer_list<detail::PatternEffect<Node>>& r)
+    void rules(const std::initializer_list<detail::PatternTreeEffect<Node>>& r)
     {
       uncompiled_rules_.insert(uncompiled_rules_.end(), r.begin(), r.end());
       compile_rules();
