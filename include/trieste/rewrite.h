@@ -536,7 +536,8 @@ namespace trieste
       {
         Node match = reified::RegexMatch;
         match->push_back(NodeDef::create(reified::Token, Location(type.str())));
-        match->push_back(NodeDef::create(reified::Regex, Location(regex->pattern())));
+        match->push_back(
+          NodeDef::create(reified::Regex, Location(regex->pattern())));
         parent->push_back(match);
         reify_continuation(parent);
       }
@@ -786,7 +787,8 @@ namespace trieste
       {
         Node inside_star = reified::InsideStar;
         for (const auto& type : types)
-          inside_star->push_back(NodeDef::create(reified::Token, Location(type.str())));
+          inside_star->push_back(
+            NodeDef::create(reified::Token, Location(type.str())));
         parent->push_back(inside_star);
         reify_continuation(parent);
       }
@@ -829,7 +831,8 @@ namespace trieste
       {
         Node inside = reified::Inside;
         for (const auto& type : types)
-          inside->push_back(NodeDef::create(reified::Token, Location(type.str())));
+          inside->push_back(
+            NodeDef::create(reified::Token, Location(type.str())));
         parent->push_back(inside);
         reify_continuation(parent);
       }
@@ -1032,7 +1035,8 @@ namespace trieste
     // template<typename F>
     class Action : public PatternDef
     {
-    using F = std::function<bool(NodeRange&)>;
+      using F = std::function<bool(NodeRange&)>;
+
     private:
       F action;
       PatternPtr pattern;
@@ -1108,9 +1112,7 @@ namespace trieste
       {
         return {
           intrusive_ptr<Action>::make(
-            std::forward<std::function<bool(NodeRange&)>>(action), 
-            pattern
-          ),
+            std::forward<std::function<bool(NodeRange&)>>(action), pattern),
           fast_pattern};
       }
 
@@ -1208,219 +1210,215 @@ namespace trieste
       }
     };
 
-
     // Class used for building pattern trees with the DSL syntax
     // TODO: Check if this should inherit some form of intrusive pointer and
     // how they are supposed to be used
     class PatternNodeDef
     {
-      private:
-        // The associated node in the tree
-        Node node_;
+    private:
+      // The associated node in the tree
+      Node node_;
 
-        // Incrementing counter for assigning keys to pairs in action_map
-        inline static uint32_t action_counter = 0;
+      // Incrementing counter for assigning keys to pairs in action_map
+      inline static uint32_t action_counter = 0;
 
-        // Map storing lambdas defined by the action operator of the DSL
-        inline static std::map<std::string, std::function<bool(NodeRange&)>> action_map = {};
+      // Map storing lambdas defined by the action operator of the DSL
+      inline static std::map<std::string, std::function<bool(NodeRange&)>>
+        action_map = {};
 
-        // Stores an action and returns a Location which is used as a lookup-key
-        static Location register_action(std::function<bool(NodeRange&)>&& action)
+      // Stores an action and returns a Location which is used as a lookup-key
+      static Location register_action(std::function<bool(NodeRange&)>&& action)
+      {
+        Location key = Location(std::to_string(++action_counter));
+
+        action_map[key.str()] = action;
+
+        return key;
+      }
+
+    public:
+      PatternNodeDef(Node node) : node_(node) {}
+
+      operator Node&()
+      {
+        return node_;
+      }
+      operator Node() const
+      {
+        return node_;
+      }
+
+      void push_back(PatternNodeDef child)
+      {
+        node_->push_back(child);
+      }
+
+      void push_back(Node child)
+      {
+        node_->push_back(child);
+      }
+
+      Node parent()
+      {
+        return node_->parent();
+      }
+
+      // Returns the action associated with action_loc, throws
+      // std::runtime_error if no such action exists template<typename F>
+      static std::function<bool(NodeRange&)>& lookup_action(Location action_loc)
+      {
+        std::string action_key = action_loc.str();
+
+        if (!action_map.contains(action_key))
         {
-          Location key = Location(std::to_string(++action_counter));
-
-          action_map[key.str()] = action;
-
-          return key;
+          throw std::runtime_error(
+            "Attempted to fetch action with location " + action_key +
+            ", no such action exists");
         }
 
+        return action_map[action_key];
+      }
 
-      public:
-        PatternNodeDef(Node node) : node_(node) {}
-      
-        operator Node&() { return node_; }
-        operator Node() const { return node_; }
+      // Parse an action in the DSL
+      PatternNodeDef operator()(std::function<bool(NodeRange&)>&& action) const
+      {
+        Location action_key = register_action(
+          std::forward<std::function<bool(NodeRange&)>>(action));
 
-        void push_back(PatternNodeDef child)
+        Node action_node = NodeDef::create(reified::Action, action_key);
+        action_node->push_back(node_);
+
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(action_node);
+
+        return parent;
+      }
+
+      // Parse a name capture in the DSL
+      PatternNodeDef operator[](const Token& name) const
+      {
+        Node cap = reified::Cap;
+
+        cap->push_back(node_);
+        cap->push_back(NodeDef::create(reified::Token, Location(name.str())));
+
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(cap);
+
+        return parent;
+      }
+
+      // TODO: add comment, don't know what Opt represents (Optional?)
+      PatternNodeDef operator~() const
+      {
+        Node opt = reified::Opt;
+
+        opt->push_back(node_);
+
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(opt);
+
+        return parent;
+      }
+
+      // TODO: add comment, don't know what Pred represents (Predicate?
+      // Predecessor?)
+      PatternNodeDef operator++() const
+      {
+        Node pred = reified::Pred;
+
+        pred->push_back(node_);
+
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(pred);
+
+        return parent;
+      }
+
+      // TODO: same as above
+      PatternNodeDef operator--() const
+      {
+        Node neg_pred = reified::NegPred;
+
+        neg_pred->push_back(node_);
+
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(neg_pred);
+
+        return parent;
+      }
+
+      // Parses a pattern repetition in the DSL
+      PatternNodeDef operator++(int) const
+      {
+        Node rep = reified::Rep;
+
+        rep->push_back(node_);
+
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(rep);
+
+        return parent;
+      }
+
+      // Parses a negated pattern in the DSL
+      PatternNodeDef operator!() const
+      {
+        Node not_node = reified::Not;
+
+        not_node->push_back(node_);
+
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(not_node);
+
+        return parent;
+      }
+
+      // Parses a pattern sequence in the DSL
+      PatternNodeDef operator*(PatternNodeDef rhs) const
+      {
+        node_->push_back({rhs.node_->begin(), rhs.node_->end()});
+
+        return *this;
+      }
+
+      // Parses a choice between two patterns
+      PatternNodeDef operator/(PatternNodeDef rhs) const
+      {
+        // If both lhs and rhs are TokenMatches we merge the tokens into one
+        // TokenMatch.
+        if (node_ == reified::TokenMatch && rhs == reified::TokenMatch)
         {
-          node_->push_back(child);
-        }
-
-        void push_back(Node child)
-        {
-          node_->push_back(child);
-        }
-
-        Node parent() { return node_->parent(); }
-
-        // Returns the action associated with action_loc, throws std::runtime_error
-        // if no such action exists
-        // template<typename F>
-        static std::function<bool(NodeRange&)>& lookup_action(Location action_loc)
-        {
-          std::string action_key = action_loc.str();
-
-          if(!action_map.contains(action_key))
-          {
-            throw std::runtime_error(
-              "Attempted to fetch action with location " 
-              + action_key + ", no such action exists");
-          }
-
-          return action_map[action_key];
-        }
-
-        // Parse an action in the DSL
-        PatternNodeDef operator()(std::function<bool(NodeRange&)>&& action) const
-        {
-          Location action_key = register_action(
-            std::forward<std::function<bool(NodeRange&)>>(action)
-          );
-          
-          PatternNodeDef action_node = PatternNodeDef(
-              NodeDef::create(reified::Action, action_key)
-          );
-
-          Node parent = Group;
-          parent->push_back(action_node);
-
-          return action_node;
-        }
-
-        // Parse a name capture in the DSL
-        PatternNodeDef operator[](const Token& name) const
-        {
-          PatternNodeDef cap = PatternNodeDef(reified::Cap);
-
-          cap.node_->push_back(node_->parent());
-          cap.node_->push_back(NodeDef::create(reified::Token, Location(name.str())));
-
-          Node parent = Group;
-          parent->push_back(cap);
-
-          return cap;
-        }
-
-        // TODO: add comment, don't know what Opt represents (Optional?)
-        PatternNodeDef operator~() const 
-        {
-          PatternNodeDef opt = PatternNodeDef(reified::Opt);
-
-          opt.node_->push_back(node_->parent());
-
-          Node parent = Group;
-          parent->push_back(opt);
-
-          return opt;
-        }
-
-        // TODO: add comment, don't know what Pred represents (Predicate? Predecessor?)
-        PatternNodeDef operator++() const 
-        {
-          PatternNodeDef pred = PatternNodeDef(reified::Pred);
-
-          pred.node_->push_back(node_->parent());
-
-          Node parent = Group;
-          parent->push_back(pred);
-
-          return pred;
-        }
-
-        // TODO: same as above
-        PatternNodeDef operator--() const 
-        {
-          PatternNodeDef neg_pred = PatternNodeDef(reified::NegPred);
-
-          neg_pred.node_->push_back(node_->parent());
-
-          Node parent = Group;
-          parent->push_back(neg_pred);
-
-          return neg_pred;
-        }
-
-        // Parses a pattern repetition in the DSL
-        PatternNodeDef operator++(int) const 
-        {
-          PatternNodeDef rep = PatternNodeDef(reified::Rep);
-
-          rep.node_->push_back(node_->parent());
-
-          Node parent = Group;
-          parent->push_back(rep);
-
-          return rep;
-        }
-
-        // Parses a negated pattern in the DSL
-        PatternNodeDef operator!() const
-        {
-          PatternNodeDef not_node = PatternNodeDef(reified::Not);
-
-          not_node.node_->push_back(node_->parent());
-          
-          Node parent = Group;
-          parent->push_back(not_node);
-
-          return not_node;
-        }
-
-        // Parses a pattern sequence in the DSL
-        PatternNodeDef operator*(PatternNodeDef rhs) const
-        {
-          Node lhs_parent = node_->parent();
-          Node rhs_parent = rhs.node_->parent();
-
-          for(Node child : *rhs_parent)
-          {
-            lhs_parent->push_back(child);
-          }
+          node_->push_back({rhs.node_->begin(), rhs.node_->end()});
 
           return *this;
         }
 
-        // Parses a choice between two patterns
-        PatternNodeDef operator/(PatternNodeDef rhs) const
-        {
-          // If both lhs and rhs are TokenMatches we merge the tokens into one TokenMatch.
-          if (node_ == reified::TokenMatch && rhs == reified::TokenMatch) {
-            Node lhs_parent = node_->parent();
-            Node rhs_parent = rhs.node_->parent();
+        // Otherwise parse into a choice node.
+        Node choice = reified::Choice;
 
-            for(Node child : *rhs_parent)
-            {
-              lhs_parent->push_back(child);
-            }
+        choice->push_back(node_);
+        choice->push_back(rhs.node_);
 
-            return *this;
-          }
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(choice);
 
-          // Otherwise parse into a choice node.
-          PatternNodeDef choice = PatternNodeDef(reified::Choice);
+        return parent;
+      }
 
-          choice.push_back(node_->parent());
-          choice.push_back(rhs.node_->parent());
+      // Parses a child relationship in the DSL
+      PatternNodeDef operator<<(PatternNodeDef rhs) const
+      {
+        Node children_node = reified::Children;
 
-          Node parent = Group;
-          parent->push_back(choice);
+        children_node->push_back(node_);
+        children_node->push_back(rhs.node_);
 
-          return choice;
-        }
+        PatternNodeDef parent = PatternNodeDef(Group);
+        parent.push_back(children_node);
 
-        // Parses a child relationship in the DSL
-        PatternNodeDef operator<<(PatternNodeDef rhs) const
-        {
-          PatternNodeDef children_node = PatternNodeDef(reified::Children);
-
-          children_node.push_back(node_->parent());
-          children_node.push_back(rhs.node_->parent());
-
-          Node parent = Group;
-          parent->push_back(children_node);
-
-          return children_node;
-        }
+        return parent;
+      }
     };
 
     template<typename T>
@@ -1429,177 +1427,162 @@ namespace trieste
     template<typename T>
     class PatternTreeEffect
     {
-      private:
-        Node top_;
-        Effect<T> effect_;
+    private:
+      Node top_;
+      Effect<T> effect_;
 
-        Pattern compile_pattern(Node node)
+      Pattern compile_pattern(Node node)
+      {
+        // All the cases assume the tree is well-formed and performs no
+        // error-checking
+
+        // Base cases
+
+        if (node == reified::Any)
+          return Pattern(
+            intrusive_ptr<detail::Anything>::make(),
+            detail::FastPattern::match_any());
+
+        if (node == reified::First)
+          return Pattern(
+            intrusive_ptr<detail::First>::make(),
+            detail::FastPattern::match_pred());
+
+        if (node == reified::Last)
+          return Pattern(
+            intrusive_ptr<detail::Last>::make(),
+            detail::FastPattern::match_pred());
+
+        if (node == reified::TokenMatch)
         {
-          // All the cases assume the tree is well-formed and performs no error-checking
+          std::vector<Token> tokens = get_child_tokens(node);
+          std::set<Token> token_set(tokens.begin(), tokens.end());
 
-          //Base cases
-
-          if (node == reified::Any)
-            return Pattern(
-              intrusive_ptr<detail::Anything>::make(), 
-              detail::FastPattern::match_any()
-            );
-
-
-          if (node == reified::First)
-            return Pattern(
-              intrusive_ptr<detail::First>::make(), 
-              detail::FastPattern::match_pred()
-            );
-
-          
-          if (node == reified::Last)
-            return Pattern(
-              intrusive_ptr<detail::Last>::make(), 
-              detail::FastPattern::match_pred()
-            );
-
-
-          if (node == reified::TokenMatch)
-          {
-            std::vector<Token> tokens = get_child_tokens(node);
-            std::set<Token> token_set(tokens.begin(), tokens.end());
-
-            return Pattern(
-              intrusive_ptr<detail::TokenMatch>::make(tokens),
-              detail::FastPattern::match_token(token_set));
-          }
-          
-          if(node == reified::Inside)
-          {
-            std::vector<Token> tokens = get_child_tokens(node);
-            std::set<Token> token_set(tokens.begin(), tokens.end());
-
-            return Pattern(
-              intrusive_ptr<detail::Inside>::make(tokens),
-              detail::FastPattern::match_parent(token_set));
-          }
-
-          // Recursion cases
-
-          if (node == Top)
-            return compile_pattern(node->at(0));
-
-
-          if (node == reified::Cap)
-          {
-            Pattern child_pattern = compile_pattern(node->at(0));
-            Token name = TokenDef(node->at(1)->location().str().c_str());
-            
-            return child_pattern[name];
-          }
-
-
-          if (node == reified::RegexMatch)
-          {
-            Token child_type = TokenDef(node->at(0)->location().str().c_str());
-            std::string regex = node->at(1)->location().str();
-
-            return Pattern(
-              intrusive_ptr<detail::RegexMatch>::make(child_type, regex),
-              detail::FastPattern::match_token({child_type})
-            );
-          }
-          
-
-          if (node == reified::Opt)
-            return ~compile_pattern(node->at(0));
-
-
-          if (node == reified::Rep)
-            return compile_pattern(node->at(0))++;
-          
-
-          if (node == reified::Not)
-            return !compile_pattern(node->at(0));
-
-          if (node == reified::Choice)
-            return compile_pattern(node->at(0)) / compile_pattern(node->at(1));
-
-          if (node == reified::Children)
-          {
-            Pattern parent_pattern = compile_pattern(node->at(0));
-            Pattern child_pattern = compile_pattern(node->at(0));
-
-            return parent_pattern << child_pattern;
-          }
-
-
-          if (node == reified::Pred)
-            return ++compile_pattern(node->at(0));
-
-
-          if (node == reified::NegPred)
-            return --compile_pattern(node->at(0));
-
-
-          if (node == reified::Action)
-          {
-            std::function<bool(NodeRange&)>& action = 
-              PatternNodeDef::lookup_action(node->location());
-            Pattern pattern = compile_pattern(node->at(0));
-            
-            return pattern(
-              std::forward<std::function<bool(NodeRange&)>>(action)
-            );
-          }
-          
-          if (node == Group)
-            return compile_group(node);
-
-          
-          throw std::runtime_error(
-            "No matching case for node type: " 
-            + std::string(node->type().str())
-          );
-          
+          return Pattern(
+            intrusive_ptr<detail::TokenMatch>::make(tokens),
+            detail::FastPattern::match_token(token_set));
         }
 
-        Pattern compile_group(Node node)
+        if (node == reified::Inside)
         {
-          Pattern sequence = compile_pattern(node->at(0));
+          std::vector<Token> tokens = get_child_tokens(node);
+          std::set<Token> token_set(tokens.begin(), tokens.end());
 
-          bool first = true;
-          for (Node child : *node)
+          return Pattern(
+            intrusive_ptr<detail::Inside>::make(tokens),
+            detail::FastPattern::match_parent(token_set));
+        }
+
+        // Recursion cases
+
+        if (node == Top)
+          return compile_pattern(node->at(0));
+
+        if (node == reified::Cap)
+        {
+          Pattern child_pattern = compile_pattern(node->at(0));
+          Token name = node->at(1)->type();
+
+          return child_pattern[name];
+        }
+
+        if (node == reified::RegexMatch)
+        {
+          Token child_type = node->type();
+          std::string regex = node->at(1)->location().str();
+
+          return Pattern(
+            intrusive_ptr<detail::RegexMatch>::make(child_type, regex),
+            detail::FastPattern::match_token({child_type}));
+        }
+
+        if (node == reified::Opt)
+          return ~compile_pattern(node->at(0));
+
+        if (node == reified::Rep)
+          return compile_pattern(node->at(0))++;
+
+        if (node == reified::Not)
+          return !compile_pattern(node->at(0));
+
+        if (node == reified::Choice)
+          return compile_pattern(node->at(0)) / compile_pattern(node->at(1));
+
+        if (node == reified::Children)
+        {
+          Pattern parent_pattern = compile_pattern(node->at(0));
+          Pattern child_pattern = compile_pattern(node->at(1));
+
+          return parent_pattern << child_pattern;
+        }
+
+        if (node == reified::Pred)
+          return ++compile_pattern(node->at(0));
+
+        if (node == reified::NegPred)
+          return --compile_pattern(node->at(0));
+
+        if (node == reified::Action)
+        {
+          std::function<bool(NodeRange&)>& action =
+            PatternNodeDef::lookup_action(node->location());
+          Pattern pattern = compile_pattern(node->at(0));
+
+          return pattern(std::forward<std::function<bool(NodeRange&)>>(action));
+        }
+
+        if (node == Group)
+          return compile_group(node);
+
+        throw std::runtime_error(
+          "No matching case for node type: " + std::string(node->type().str()));
+      }
+
+      Pattern compile_group(Node node)
+      {
+        Pattern sequence = compile_pattern(node->at(0));
+
+        bool first = true;
+        for (Node child : *node)
+        {
+          if (first)
           {
-            if (first)
-            {
-              first = false;
-              continue;
-            }
-
-            sequence = sequence * compile_pattern(child);
+            first = false;
+            continue;
           }
 
-          return sequence;
+          sequence = sequence * compile_pattern(child);
         }
 
-        std::vector<Token> get_child_tokens(Node node)
+        return sequence;
+      }
+
+      std::vector<Token> get_child_tokens(Node node)
+      {
+        std::vector<Token> tokens;
+        for (Node child : *node)
         {
-          std::vector<Token> tokens;
-          for (Node child : *node)
-          {
-            // NOTE: We're losing any flags attached to the original token when
-            // reconstructing it this way
-            tokens.push_back(TokenDef(child->location().str().c_str()));
-          }
-
-          return tokens;
+          // NOTE: We're losing any flags attached to the original token when
+          // reconstructing it this way
+          tokens.push_back(child->type());
         }
 
-      public:
-        PatternTreeEffect(Node top, Effect<T> effect) : top_(top), effect_(effect) {}
+        return tokens;
+      }
 
-        PatternEffect<T> compile()
-        {
-          return {compile_pattern(top_), effect_};
-        }
+    public:
+      PatternTreeEffect(Node top, Effect<T> effect) : top_(top), effect_(effect)
+      {}
 
+      Node pattern()
+      {
+        return top_;
+      }
+
+      PatternEffect<T> compile()
+      {
+        return {compile_pattern(top_), effect_};
+      }
     };
 
     struct RangeContents
@@ -1645,10 +1628,12 @@ namespace trieste
   }
 
   // TODO: Return a pair of <Node, Effect<T>> instead.
-  // TODO: Add Top node as the grandparent of the PatternNodeDef to make the tree well-formed
+  // TODO: Add Top node as the grandparent of the PatternNodeDef to make the
+  // tree well-formed
   template<typename F>
-  inline auto operator>>(detail::Located<detail::PatternNodeDef> pattern, F effect)
-  -> detail::PatternTreeEffect<decltype(effect(std::declval<Match&>()))>
+  inline auto
+  operator>>(detail::Located<detail::PatternNodeDef> pattern, F effect)
+    -> detail::PatternTreeEffect<decltype(effect(std::declval<Match&>()))>
   {
     Node top = Top;
     top->push_back(pattern.value);
@@ -1660,75 +1645,73 @@ namespace trieste
   // node as parent
   inline detail::PatternNodeDef create_single_pattern(Token token)
   {
-    detail::PatternNodeDef pattern_node = detail::PatternNodeDef(token);
-    Node parent = Group;
-    parent->push_back(pattern_node);
+    Node pattern_node = token;
+    detail::PatternNodeDef parent = detail::PatternNodeDef(Group);
+    parent.push_back(pattern_node);
 
-    return pattern_node;
+    return parent;
   }
 
   inline const auto Any = create_single_pattern(reified::Any);
   inline const auto Start = create_single_pattern(reified::First);
   inline const auto End = create_single_pattern(reified::Last);
 
-
   inline detail::PatternNodeDef T(const Token& type)
   {
+    Node match = reified::TokenMatch;
+    match->push_back(NodeDef::create(reified::Token, Location(type.str())));
+
     detail::PatternNodeDef group = detail::PatternNodeDef(Group);
-
-    detail::PatternNodeDef match = detail::PatternNodeDef(reified::TokenMatch);
     group.push_back(match);
-    match.push_back(NodeDef::create(reified::Token, Location(type.str())));
 
-    return match;
+    return group;
   }
 
   template<typename... Ts>
   inline detail::PatternNodeDef
   T(const Token& type1, const Token& type2, const Ts&... types)
   {
-    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+    Node match = reified::TokenMatch;
 
-    detail::PatternNodeDef match = detail::PatternNodeDef(reified::TokenMatch);
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
     group.push_back(match);
 
     std::initializer_list<Token> tokens{type1, type2, types...};
-    for(const Token& t : tokens)
+    for (const Token& t : tokens)
     {
-      match.push_back(NodeDef::create(reified::Token, Location(t.str())));
+      match->push_back(NodeDef::create(reified::Token, Location(t.str())));
     }
 
-    return match;
+    return group;
   }
 
   inline detail::PatternNodeDef T(const Token& type, const std::string& r)
   {
+    Node match = reified::RegexMatch;
+    match->push_back(NodeDef::create(reified::Token, Location(type.str())));
+    match->push_back(NodeDef::create(reified::Regex, Location(r)));
+
     detail::PatternNodeDef group = detail::PatternNodeDef(Group);
-
-    detail::PatternNodeDef match = detail::PatternNodeDef(reified::RegexMatch);
-    match.push_back(NodeDef::create(reified::Token, Location(type.str())));
-    match.push_back(NodeDef::create(reified::Regex, Location(r)));
-
     group.push_back(match);
 
-    return match;
+    return group;
   }
 
   template<typename... Ts>
   inline detail::PatternNodeDef In(const Token& type1, const Ts&... types)
   {
     detail::PatternNodeDef group = detail::PatternNodeDef(Group);
-    detail::PatternNodeDef inside = detail::PatternNodeDef(reified::Inside);
+    Node inside = reified::Inside;
 
     std::initializer_list<Token> tokens{type1, types...};
     for (const Token& type : tokens)
     {
-      inside.push_back(NodeDef::create(reified::Token, Location(type.str())));
+      inside->push_back(NodeDef::create(reified::Token, Location(type.str())));
     }
 
     group.push_back(inside);
 
-    return inside;
+    return group;
   }
 
   inline detail::EphemeralNode operator-(Node node)
@@ -1756,7 +1739,8 @@ namespace trieste
     return {std::move(nodes)};
   }
 
-  inline detail::ExtendRangeContents operator+(detail::RangeContents range_contents)
+  inline detail::ExtendRangeContents
+  operator+(detail::RangeContents range_contents)
   {
     return {range_contents.range};
   }

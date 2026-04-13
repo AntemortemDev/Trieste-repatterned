@@ -151,7 +151,8 @@ namespace trieste
     void rules(Ts... r)
     {
       std::vector<detail::PatternTreeEffect<Node>> rules = {r...};
-      uncompiled_rules_.insert(uncompiled_rules_.end(), rules.begin(), rules.end());
+      uncompiled_rules_.insert(
+        uncompiled_rules_.end(), rules.begin(), rules.end());
       compile_rules();
     }
 
@@ -214,15 +215,15 @@ namespace trieste
       return {node, count, changes_sum};
     }
 
-  std::vector<Node> reify_patterns()
-  {
-    std::vector<Node> patterns;
-    for (auto& [pat, _] : rules_)
+    std::vector<Node> reify_patterns()
     {
-      patterns.push_back(pat.value.reify());
+      std::vector<Node> patterns;
+      for (auto& [pat, _] : rules_)
+      {
+        patterns.push_back(pat.value.reify());
+      }
+      return patterns;
     }
-    return patterns;
-  }
 
   private:
     void compile_rules()
@@ -230,8 +231,11 @@ namespace trieste
       rule_map.clear();
       rules_.clear();
 
-      for(detail::PatternTreeEffect<Node> u_rule : uncompiled_rules_)
+      for (detail::PatternTreeEffect<Node> u_rule : uncompiled_rules_)
       {
+        // For debugging only, remove once debugging is done
+        std::cout << u_rule.pattern()->str() << std::endl << std::endl;
+
         rules_.push_back(u_rule.compile());
       }
 
@@ -313,7 +317,7 @@ namespace trieste
           n->set_location(loc);
         });
 
-        replaced = replace == Reapply? REAPPLY: replace->size();
+        replaced = replace == Reapply ? REAPPLY : replace->size();
         it = node->insert(it, replace->begin(), replace->end());
       }
       else
