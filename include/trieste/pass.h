@@ -153,6 +153,8 @@ namespace trieste
       std::vector<detail::PatternTreeEffect<Node>> rules = {r...};
       uncompiled_rules_.insert(
         uncompiled_rules_.end(), rules.begin(), rules.end());
+      uncompiled_rules_.insert(
+        uncompiled_rules_.end(), rules.begin(), rules.end());
       compile_rules();
     }
 
