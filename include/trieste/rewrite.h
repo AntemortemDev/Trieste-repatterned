@@ -1237,7 +1237,19 @@ namespace trieste
       }
 
     public:
-      PatternNodeDef(Node node) : node_(node) {}
+      // PatternNodeDef(Node node) : node_(node) {}
+      
+      PatternNodeDef(Node node, bool create_parent_group = false)
+      {
+        if (create_parent_group)
+        {
+          Node group = Group;
+          group->push_back(node);
+          node_ = group;
+        }
+        else
+          node_ = node;
+      }
 
       operator Node&()
       {
@@ -1300,7 +1312,7 @@ namespace trieste
         Node cap = reified::Cap;
 
         cap->push_back(node_);
-        cap->push_back(NodeDef::create(reified::Token, Location(name.str())));
+        cap->push_back(NodeDef::create(name));
 
         PatternNodeDef parent = PatternNodeDef(Group);
         parent.push_back(cap);
@@ -1377,9 +1389,10 @@ namespace trieste
       // Parses a pattern sequence in the DSL
       PatternNodeDef operator*(PatternNodeDef rhs) const
       {
-        node_->push_back({rhs.node_->begin(), rhs.node_->end()});
+        PatternNodeDef clone = PatternNodeDef(node_->clone());
+        clone.node_->push_back({rhs.node_->begin(), rhs.node_->end()});
 
-        return *this;
+        return clone;
       }
 
       // Parses a choice between two patterns
@@ -1562,8 +1575,6 @@ namespace trieste
         std::vector<Token> tokens;
         for (Node child : *node)
         {
-          // NOTE: We're losing any flags attached to the original token when
-          // reconstructing it this way
           tokens.push_back(child->type());
         }
 
@@ -1641,25 +1652,14 @@ namespace trieste
     return {top, effect};
   }
 
-  // Helper function for creating valid pattern tokens by adding a Group
-  // node as parent
-  inline detail::PatternNodeDef create_single_pattern(Token token)
-  {
-    Node pattern_node = token;
-    detail::PatternNodeDef parent = detail::PatternNodeDef(Group);
-    parent.push_back(pattern_node);
-
-    return parent;
-  }
-
-  inline const auto Any = create_single_pattern(reified::Any);
-  inline const auto Start = create_single_pattern(reified::First);
-  inline const auto End = create_single_pattern(reified::Last);
+  inline const auto Any = detail::PatternNodeDef(reified::Any, true);
+  inline const auto Start = detail::PatternNodeDef(reified::First, true);
+  inline const auto End = detail::PatternNodeDef(reified::Last, true);
 
   inline detail::PatternNodeDef T(const Token& type)
   {
     Node match = reified::TokenMatch;
-    match->push_back(NodeDef::create(reified::Token, Location(type.str())));
+    match->push_back(NodeDef::create(type));
 
     detail::PatternNodeDef group = detail::PatternNodeDef(Group);
     group.push_back(match);
@@ -1679,7 +1679,7 @@ namespace trieste
     std::initializer_list<Token> tokens{type1, type2, types...};
     for (const Token& t : tokens)
     {
-      match->push_back(NodeDef::create(reified::Token, Location(t.str())));
+      match->push_back(NodeDef::create(t));
     }
 
     return group;
@@ -1688,7 +1688,7 @@ namespace trieste
   inline detail::PatternNodeDef T(const Token& type, const std::string& r)
   {
     Node match = reified::RegexMatch;
-    match->push_back(NodeDef::create(reified::Token, Location(type.str())));
+    match->push_back(NodeDef::create(type));
     match->push_back(NodeDef::create(reified::Regex, Location(r)));
 
     detail::PatternNodeDef group = detail::PatternNodeDef(Group);
@@ -1706,7 +1706,7 @@ namespace trieste
     std::initializer_list<Token> tokens{type1, types...};
     for (const Token& type : tokens)
     {
-      inside->push_back(NodeDef::create(reified::Token, Location(type.str())));
+      inside->push_back(NodeDef::create(type));
     }
 
     group.push_back(inside);

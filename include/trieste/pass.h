@@ -234,7 +234,11 @@ namespace trieste
       for (detail::PatternTreeEffect<Node> u_rule : uncompiled_rules_)
       {
         // For debugging only, remove once debugging is done
-        std::cout << u_rule.pattern()->str() << std::endl << std::endl;
+        // std::cout << u_rule.pattern()->str() << std::endl << std::endl;
+
+        // detail::PatternEffect<Node> c_rule = u_rule.compile();
+
+        // std::cout << c_rule.first.value.reify()->str() << std::endl << "-----------------------" << std::endl;
 
         rules_.push_back(u_rule.compile());
       }
