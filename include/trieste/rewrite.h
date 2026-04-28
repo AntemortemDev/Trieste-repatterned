@@ -1500,8 +1500,8 @@ namespace trieste
 
         if (node == reified::RegexMatch)
         {
-          Token child_type = node->type();
-          std::string regex = node->at(1)->location().str();
+          Token child_type = node->at(0)->type();
+          std::string regex = std::string(node->at(1)->location().view());
 
           return Pattern(
             intrusive_ptr<detail::RegexMatch>::make(child_type, regex),
