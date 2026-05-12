@@ -1485,6 +1485,16 @@ namespace trieste
             detail::FastPattern::match_parent(token_set));
         }
 
+        if (node == reified::RegexMatch)
+        {
+          Token child_type = node->at(0)->type();
+          std::string regex = std::string(node->at(1)->location().view());
+
+          return Pattern(
+            intrusive_ptr<detail::RegexMatch>::make(child_type, regex),
+            detail::FastPattern::match_token({child_type}));
+        }
+
         // Recursion cases
 
         if (node == Top)
@@ -1496,16 +1506,6 @@ namespace trieste
           Token name = node->at(1)->type();
 
           return child_pattern[name];
-        }
-
-        if (node == reified::RegexMatch)
-        {
-          Token child_type = node->at(0)->type();
-          std::string regex = std::string(node->at(1)->location().view());
-
-          return Pattern(
-            intrusive_ptr<detail::RegexMatch>::make(child_type, regex),
-            detail::FastPattern::match_token({child_type}));
         }
 
         if (node == reified::Opt)
