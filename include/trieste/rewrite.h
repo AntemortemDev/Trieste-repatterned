@@ -1269,11 +1269,6 @@ namespace trieste
         node_->push_back(child);
       }
 
-      Node parent()
-      {
-        return node_->parent();
-      }
-
       // Returns the action associated with action_loc, throws
       // std::runtime_error if no such action exists template<typename F>
       static std::function<bool(NodeRange&)>& lookup_action(Location action_loc)
