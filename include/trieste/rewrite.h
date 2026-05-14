@@ -1236,18 +1236,14 @@ namespace trieste
       }
 
     public:
-      // PatternNodeDef(Node node) : node_(node) {}
-      
-      PatternNodeDef(Node node, bool create_parent_group = false)
+      PatternNodeDef(Node node) : node_(node) {}
+
+      static PatternNodeDef in_group(Node node)
       {
-        if (create_parent_group)
-        {
-          Node group = Group;
-          group->push_back(node);
-          node_ = group;
-        }
-        else
-          node_ = node;
+        Node group = Group;
+        group->push_back(node);
+
+        return PatternNodeDef(group);
       }
 
       operator Node&()
@@ -1308,79 +1304,60 @@ namespace trieste
         cap->push_back(node_);
         cap->push_back(NodeDef::create(name));
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(cap);
-
-        return parent;
+        return in_group(cap);
       }
 
-      // TODO: add comment, don't know what Opt represents (Optional?)
+      // Parse an optional pattern in the DSL
       PatternNodeDef operator~() const
       {
         Node opt = reified::Opt;
 
         opt->push_back(node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(opt);
-
-        return parent;
+        return in_group(opt);
       }
 
-      // TODO: add comment, don't know what Pred represents (Predicate?
-      // Predecessor?)
+      // Parse a positive lookahead in the DSL
       PatternNodeDef operator++() const
       {
         Node pred = reified::Pred;
 
         pred->push_back(node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(pred);
-
-        return parent;
+        return in_group(pred);
       }
 
-      // TODO: same as above
+      // Parse a negative lookahead in the DSL
       PatternNodeDef operator--() const
       {
         Node neg_pred = reified::NegPred;
 
         neg_pred->push_back(node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(neg_pred);
-
-        return parent;
+        return in_group(neg_pred);
       }
 
-      // Parses a pattern repetition in the DSL
+      // Parse a pattern repetition in the DSL
       PatternNodeDef operator++(int) const
       {
         Node rep = reified::Rep;
 
         rep->push_back(node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(rep);
-
-        return parent;
+        return in_group(rep);
       }
 
-      // Parses a negated pattern in the DSL
+      // Parse a negated pattern in the DSL
       PatternNodeDef operator!() const
       {
         Node not_node = reified::Not;
 
         not_node->push_back(node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(not_node);
-
-        return parent;
+        return in_group(not_node);
       }
 
-      // Parses a pattern sequence in the DSL
+      // Parse a pattern sequence in the DSL
       PatternNodeDef operator*(PatternNodeDef rhs) const
       {
         PatternNodeDef clone = PatternNodeDef(node_->clone());
@@ -1389,7 +1366,7 @@ namespace trieste
         return clone;
       }
 
-      // Parses a choice between two patterns
+      // Parse a choice between two patterns
       PatternNodeDef operator/(PatternNodeDef rhs) const
       {
         // If both lhs and rhs are TokenMatches we merge the tokens into one
@@ -1407,13 +1384,10 @@ namespace trieste
         choice->push_back(node_);
         choice->push_back(rhs.node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(choice);
-
-        return parent;
+        return in_group(choice);
       }
 
-      // Parses a child relationship in the DSL
+      // Parse a child relationship in the DSL
       PatternNodeDef operator<<(PatternNodeDef rhs) const
       {
         Node children_node = reified::Children;
@@ -1421,10 +1395,7 @@ namespace trieste
         children_node->push_back(node_);
         children_node->push_back(rhs.node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(children_node);
-
-        return parent;
+        return in_group(children_node);
       }
     };
 
@@ -1482,7 +1453,7 @@ namespace trieste
 
         if (node == reified::RegexMatch)
         {
-          Token child_type = node->at(0)->type();
+          Token child_type = find_token(node->at(0)->location().view());
           std::string regex = std::string(node->at(1)->location().view());
 
           return Pattern(
@@ -1545,6 +1516,7 @@ namespace trieste
           "No matching case for node type: " + std::string(node->type().str()));
       }
 
+      // Compiles all children in a group into a sequence
       Pattern compile_group(Node node)
       {
         Pattern sequence = compile_pattern(node->at(0));
@@ -1564,12 +1536,13 @@ namespace trieste
         return sequence;
       }
 
+      // Converts every child into the token corresponding to the child's location
       std::vector<Token> get_child_tokens(Node node)
       {
         std::vector<Token> tokens;
         for (Node child : *node)
         {
-          tokens.push_back(child->type());
+          tokens.push_back(find_token(child->location().view()));
         }
 
         return tokens;
@@ -1579,11 +1552,13 @@ namespace trieste
       PatternTreeEffect(Node top, Effect<T> effect) : top_(top), effect_(effect)
       {}
 
+      // Returns the pattern tree
       Node pattern()
       {
         return top_;
       }
 
+      // Compiles the pattern tree into a Pattern-object and returns it as a PatternEffect
       PatternEffect<T> compile()
       {
         return {compile_pattern(top_), effect_};
@@ -1646,19 +1621,16 @@ namespace trieste
     return {top, effect};
   }
 
-  inline const auto Any = detail::PatternNodeDef(reified::Any, true);
-  inline const auto Start = detail::PatternNodeDef(reified::First, true);
-  inline const auto End = detail::PatternNodeDef(reified::Last, true);
+  inline const auto Any = detail::PatternNodeDef::in_group(reified::Any);
+  inline const auto Start = detail::PatternNodeDef::in_group(reified::First);
+  inline const auto End = detail::PatternNodeDef::in_group(reified::Last);
 
   inline detail::PatternNodeDef T(const Token& type)
   {
     Node match = reified::TokenMatch;
-    match->push_back(NodeDef::create(type));
+    match->push_back(NodeDef::create(reified::Token, Location(type.str())));
 
-    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
-    group.push_back(match);
-
-    return group;
+    return detail::PatternNodeDef::in_group(match);
   }
 
   template<typename... Ts>
@@ -1667,45 +1639,36 @@ namespace trieste
   {
     Node match = reified::TokenMatch;
 
-    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
-    group.push_back(match);
-
     std::initializer_list<Token> tokens{type1, type2, types...};
     for (const Token& t : tokens)
     {
-      match->push_back(NodeDef::create(t));
+      match->push_back(NodeDef::create(reified::Token, Location(t.str())));
     }
 
-    return group;
+    return detail::PatternNodeDef::in_group(match);
   }
 
   inline detail::PatternNodeDef T(const Token& type, const std::string& r)
   {
     Node match = reified::RegexMatch;
-    match->push_back(NodeDef::create(type));
+    match->push_back(NodeDef::create(reified::Token, Location(type.str())));
     match->push_back(NodeDef::create(reified::Regex, Location(r)));
 
-    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
-    group.push_back(match);
-
-    return group;
+    return detail::PatternNodeDef::in_group(match);
   }
 
   template<typename... Ts>
   inline detail::PatternNodeDef In(const Token& type1, const Ts&... types)
   {
-    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
     Node inside = reified::Inside;
 
     std::initializer_list<Token> tokens{type1, types...};
     for (const Token& type : tokens)
     {
-      inside->push_back(NodeDef::create(type));
+      inside->push_back(NodeDef::create(reified::Token, Location(type.str())));
     }
 
-    group.push_back(inside);
-
-    return group;
+    return detail::PatternNodeDef::in_group(inside);
   }
 
   inline detail::EphemeralNode operator-(Node node)
