@@ -13,6 +13,7 @@
 #include <functional>
 #include <trieste/compiler.h>
 #include <string>
+#include <stack>
 
 namespace trieste
 {
@@ -1302,7 +1303,7 @@ namespace trieste
         Node cap = reified::Cap;
 
         cap->push_back(node_);
-        cap->push_back(NodeDef::create(name));
+        cap->push_back(NodeDef::create(reified::Token, Location(name.str())));
 
         return in_group(cap);
       }
@@ -1399,6 +1400,22 @@ namespace trieste
       }
     };
 
+    struct CompilePattern
+    {
+      Node node;
+      size_t next_child;
+      Pattern pattern;
+
+      CompilePattern(
+        Node node_, 
+        size_t next_child_, 
+        Pattern pattern_
+      ) 
+      : node(node_), 
+        next_child(next_child_), 
+        pattern(pattern_) {}
+    };
+
     template<typename T>
     using PatternEffect = std::pair<Located<Pattern>, Effect<T>>;
 
@@ -1408,6 +1425,220 @@ namespace trieste
     private:
       Node top_;
       Effect<T> effect_;
+
+      Pattern compile_iterative(Node node) 
+      {
+        std::stack<CompilePattern> stack;
+        stack.push({node, 0, NULL});
+        Pattern child_pattern;
+
+        while(stack.size() > 0)
+        {
+          CompilePattern cp = stack.top();
+          stack.pop();
+
+          if (cp.node == reified::Any)
+          {
+            child_pattern = Pattern(
+              intrusive_ptr<detail::Anything>::make(),
+              detail::FastPattern::match_any());
+          }
+
+          else if (cp.node == reified::First)
+          {
+            child_pattern = Pattern(
+              intrusive_ptr<detail::First>::make(),
+              detail::FastPattern::match_pred());
+          }
+
+          else if (cp.node == reified::Last)
+          {
+            child_pattern = Pattern(
+              intrusive_ptr<detail::Last>::make(),
+              detail::FastPattern::match_pred());
+          }
+
+          else if (cp.node == reified::TokenMatch)
+          {
+            std::vector<Token> tokens = get_child_tokens(cp.node);
+            std::set<Token> token_set(tokens.begin(), tokens.end());
+
+            child_pattern = Pattern(
+              intrusive_ptr<detail::TokenMatch>::make(tokens),
+              detail::FastPattern::match_token(token_set));
+          }
+
+          else if (cp.node == reified::Inside)
+          {
+            std::vector<Token> tokens = get_child_tokens(cp.node);
+            std::set<Token> token_set(tokens.begin(), tokens.end());
+
+            child_pattern = Pattern(
+              intrusive_ptr<detail::Inside>::make(tokens),
+              detail::FastPattern::match_parent(token_set));
+          }
+
+          else if (cp.node == reified::RegexMatch)
+          {
+            Token child_type = find_token(cp.node->at(0)->location().view());
+            std::string regex = std::string(cp.node->at(1)->location().view());
+
+            child_pattern = Pattern(
+              intrusive_ptr<detail::RegexMatch>::make(child_type, regex),
+              detail::FastPattern::match_token({child_type}));
+          }
+
+          else if (cp.node == Top)
+            stack.push({cp.node->at(0), 0, NULL});
+
+          else if (cp.node == reified::Cap)
+          {
+            if(cp.next_child >= 1)
+            {
+              Token name = find_token(cp.node->at(1)->location().view());
+              child_pattern = child_pattern[name];
+            }
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({cp.node->at(0), 0, NULL});
+            }
+          }
+          else if (cp.node == reified::Opt)
+          {
+            if(cp.next_child >= 1)
+            {
+              child_pattern = ~child_pattern;
+            }
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({cp.node->at(0), 0, NULL});
+            }
+          }
+
+          else if (cp.node == reified::Rep)
+          {
+            if(cp.next_child >= 1)
+            {
+              child_pattern = child_pattern++;
+            }
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({cp.node->at(0), 0, NULL});
+            }
+          }
+
+          else if (cp.node == reified::Not)
+          {
+            if(cp.next_child >= 1)
+            {
+              child_pattern = !child_pattern;
+            }
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({cp.node->at(0), 0, NULL});
+            }
+          }
+
+          else if (cp.node == reified::Choice)
+          {
+            if(cp.next_child <= 1)
+            {
+              if(cp.next_child == 1)
+                cp.pattern = child_pattern;
+
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({cp.node->at(cp.next_child), 0, NULL});
+            }
+            else
+              child_pattern = cp.pattern / child_pattern;
+          }
+
+          else if (cp.node == reified::Children)
+          {
+            if(cp.next_child <= 1)
+            {
+              if(cp.next_child == 1)
+                cp.pattern = child_pattern;
+
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({cp.node->at(cp.next_child), 0, NULL});
+            }
+            else
+              child_pattern = cp.pattern << child_pattern;
+          }
+
+          else if (cp.node == reified::Pred)
+          {
+            if(cp.next_child >= 1)
+              child_pattern = ++child_pattern;
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({node->at(0), 0, NULL});
+            }
+          }
+
+          else if (cp.node == reified::NegPred)
+          {
+            if(cp.next_child >= 1)
+              child_pattern = --child_pattern;
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({node->at(0), 0, NULL});
+            }
+          }
+
+          else if (cp.node == reified::Action)
+          {
+            if(cp.next_child >= 1)
+            {
+              std::function<bool(NodeRange&)>& action =
+                PatternNodeDef::lookup_action(cp.node->location());
+              
+              child_pattern = child_pattern(action);
+            }
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              stack.push({node->at(0), 0, NULL});
+            }
+          }
+
+          if (cp.node == Group)
+          {
+            if(cp.next_child == 1)
+              cp.pattern = child_pattern;
+            else if(cp.next_child > 1)
+              cp.pattern = cp.pattern * child_pattern;
+
+            if(cp.next_child >= cp.node->size())
+              child_pattern = cp.pattern;
+            else
+            {
+              cp.next_child++;
+              stack.push(cp);
+              CompilePattern child = {cp.node->at(cp.next_child), 0, NULL};
+              stack.push(child);
+            }
+          }
+        }
+
+        return child_pattern;
+      }
 
       Pattern compile_pattern(Node node)
       {
@@ -1469,7 +1700,7 @@ namespace trieste
         if (node == reified::Cap)
         {
           Pattern child_pattern = compile_pattern(node->at(0));
-          Token name = node->at(1)->type();
+          Token name = find_token(node->at(1)->location().view());
 
           return child_pattern[name];
         }
@@ -1561,7 +1792,7 @@ namespace trieste
       // Compiles the pattern tree into a Pattern-object and returns it as a PatternEffect
       PatternEffect<T> compile()
       {
-        return {compile_pattern(top_), effect_};
+        return {compile_iterative(top_), effect_};
       }
     };
 
