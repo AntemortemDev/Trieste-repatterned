@@ -1597,7 +1597,7 @@ namespace trieste
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({node->at(0), 0, default_pattern});
+              stack.push({cp.node->at(0), 0, default_pattern});
             }
           }
 
@@ -1609,7 +1609,7 @@ namespace trieste
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({node->at(0), 0, default_pattern});
+              stack.push({cp.node->at(0), 0, default_pattern});
             }
           }
 
