@@ -11,9 +11,10 @@
 #include <array>
 #include <cassert>
 #include <functional>
-#include <trieste/compiler.h>
-#include <string>
 #include <stack>
+#include <string>
+#include <trieste/compiler.h>
+#include <utility>
 
 namespace trieste
 {
@@ -1400,20 +1401,23 @@ namespace trieste
       }
     };
 
+    // Structure for storing the necessary information for iterative pattern
+    // compilation
     struct CompilePattern
     {
+      // The node associated with this element
       Node node;
+
+      // The index of the child which should be explored next time this element
+      // is encountered
       size_t next_child;
+
+      // For storing a pattern between copmilatioin of children
       Pattern pattern;
 
-      CompilePattern(
-        Node node_, 
-        size_t next_child_, 
-        Pattern pattern_
-      ) 
-      : node(node_), 
-        next_child(next_child_), 
-        pattern(pattern_) {}
+      CompilePattern(Node node_, size_t next_child_, Pattern pattern_)
+      : node(node_), next_child(next_child_), pattern(pattern_)
+      {}
     };
 
     template<typename T>
@@ -1426,13 +1430,21 @@ namespace trieste
       Node top_;
       Effect<T> effect_;
 
-      Pattern compile_iterative(Node node) 
+      // Compiles a pattern tree iteratively
+      static Pattern compile_iterative(Node node)
       {
+        // Stack storing the current path through the tree
         std::stack<CompilePattern> stack;
-        stack.push({node, 0, NULL});
-        Pattern child_pattern;
 
-        while(stack.size() > 0)
+        // Default pattern assigned to CompilePatterns, has no effect on
+        // compilation
+        Pattern default_pattern =
+          Pattern(intrusive_ptr<Anything>::make(), FastPattern::match_any());
+
+        stack.push({node, 0, default_pattern});
+        Pattern child_pattern = default_pattern;
+
+        while (stack.size() > 0)
         {
           CompilePattern cp = stack.top();
           stack.pop();
@@ -1489,11 +1501,11 @@ namespace trieste
           }
 
           else if (cp.node == Top)
-            stack.push({cp.node->at(0), 0, NULL});
+            stack.push({cp.node->at(0), 0, default_pattern});
 
           else if (cp.node == reified::Cap)
           {
-            if(cp.next_child >= 1)
+            if (cp.next_child >= 1)
             {
               Token name = find_token(cp.node->at(1)->location().view());
               child_pattern = child_pattern[name];
@@ -1502,12 +1514,12 @@ namespace trieste
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({cp.node->at(0), 0, NULL});
+              stack.push({cp.node->at(0), 0, default_pattern});
             }
           }
           else if (cp.node == reified::Opt)
           {
-            if(cp.next_child >= 1)
+            if (cp.next_child >= 1)
             {
               child_pattern = ~child_pattern;
             }
@@ -1515,13 +1527,13 @@ namespace trieste
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({cp.node->at(0), 0, NULL});
+              stack.push({cp.node->at(0), 0, default_pattern});
             }
           }
 
           else if (cp.node == reified::Rep)
           {
-            if(cp.next_child >= 1)
+            if (cp.next_child >= 1)
             {
               child_pattern = child_pattern++;
             }
@@ -1529,13 +1541,13 @@ namespace trieste
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({cp.node->at(0), 0, NULL});
+              stack.push({cp.node->at(0), 0, default_pattern});
             }
           }
 
           else if (cp.node == reified::Not)
           {
-            if(cp.next_child >= 1)
+            if (cp.next_child >= 1)
             {
               child_pattern = !child_pattern;
             }
@@ -1543,20 +1555,20 @@ namespace trieste
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({cp.node->at(0), 0, NULL});
+              stack.push({cp.node->at(0), 0, default_pattern});
             }
           }
 
           else if (cp.node == reified::Choice)
           {
-            if(cp.next_child <= 1)
+            if (cp.next_child <= 1)
             {
-              if(cp.next_child == 1)
+              if (cp.next_child == 1)
                 cp.pattern = child_pattern;
 
               cp.next_child++;
               stack.push(cp);
-              stack.push({cp.node->at(cp.next_child), 0, NULL});
+              stack.push({cp.node->at(cp.next_child - 1), 0, default_pattern});
             }
             else
               child_pattern = cp.pattern / child_pattern;
@@ -1564,14 +1576,14 @@ namespace trieste
 
           else if (cp.node == reified::Children)
           {
-            if(cp.next_child <= 1)
+            if (cp.next_child <= 1)
             {
-              if(cp.next_child == 1)
+              if (cp.next_child == 1)
                 cp.pattern = child_pattern;
 
               cp.next_child++;
               stack.push(cp);
-              stack.push({cp.node->at(cp.next_child), 0, NULL});
+              stack.push({cp.node->at(cp.next_child - 1), 0, default_pattern});
             }
             else
               child_pattern = cp.pattern << child_pattern;
@@ -1579,59 +1591,61 @@ namespace trieste
 
           else if (cp.node == reified::Pred)
           {
-            if(cp.next_child >= 1)
+            if (cp.next_child >= 1)
               child_pattern = ++child_pattern;
             else
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({node->at(0), 0, NULL});
+              stack.push({node->at(0), 0, default_pattern});
             }
           }
 
           else if (cp.node == reified::NegPred)
           {
-            if(cp.next_child >= 1)
+            if (cp.next_child >= 1)
               child_pattern = --child_pattern;
             else
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({node->at(0), 0, NULL});
+              stack.push({node->at(0), 0, default_pattern});
             }
           }
 
           else if (cp.node == reified::Action)
           {
-            if(cp.next_child >= 1)
+            if (cp.next_child >= 1)
             {
               std::function<bool(NodeRange&)>& action =
                 PatternNodeDef::lookup_action(cp.node->location());
-              
-              child_pattern = child_pattern(action);
+
+              child_pattern = child_pattern(
+                std::forward<std::function<bool(NodeRange&)>>(action));
             }
             else
             {
               cp.next_child++;
               stack.push(cp);
-              stack.push({node->at(0), 0, NULL});
+              stack.push({cp.node->at(0), 0, default_pattern});
             }
           }
 
           if (cp.node == Group)
           {
-            if(cp.next_child == 1)
+            if (cp.next_child == 1)
               cp.pattern = child_pattern;
-            else if(cp.next_child > 1)
+            else if (cp.next_child > 1)
               cp.pattern = cp.pattern * child_pattern;
 
-            if(cp.next_child >= cp.node->size())
+            if (cp.next_child >= cp.node->size())
               child_pattern = cp.pattern;
             else
             {
+              CompilePattern child = {
+                cp.node->at(cp.next_child), 0, default_pattern};
               cp.next_child++;
               stack.push(cp);
-              CompilePattern child = {cp.node->at(cp.next_child), 0, NULL};
               stack.push(child);
             }
           }
@@ -1640,7 +1654,7 @@ namespace trieste
         return child_pattern;
       }
 
-      Pattern compile_pattern(Node node)
+      static Pattern compile_pattern(Node node)
       {
         // All the cases assume the tree is well-formed and performs no
         // error-checking
@@ -1748,7 +1762,7 @@ namespace trieste
       }
 
       // Compiles all children in a group into a sequence
-      Pattern compile_group(Node node)
+      static Pattern compile_group(Node node)
       {
         Pattern sequence = compile_pattern(node->at(0));
 
@@ -1767,8 +1781,9 @@ namespace trieste
         return sequence;
       }
 
-      // Converts every child into the token corresponding to the child's location
-      std::vector<Token> get_child_tokens(Node node)
+      // Converts every child into the token corresponding to the child's
+      // location
+      static std::vector<Token> get_child_tokens(Node node)
       {
         std::vector<Token> tokens;
         for (Node child : *node)
@@ -1789,7 +1804,8 @@ namespace trieste
         return top_;
       }
 
-      // Compiles the pattern tree into a Pattern-object and returns it as a PatternEffect
+      // Compiles the pattern tree into a Pattern-object and returns it as a
+      // PatternEffect
       PatternEffect<T> compile()
       {
         return {compile_iterative(top_), effect_};
