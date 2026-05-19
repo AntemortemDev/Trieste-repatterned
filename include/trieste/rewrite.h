@@ -1302,7 +1302,7 @@ namespace trieste
         Node cap = reified::Cap;
 
         cap->push_back(node_);
-        cap->push_back(NodeDef::create(name));
+        cap->push_back(NodeDef::create(reified::Token, Location(name.str())));
 
         return in_group(cap);
       }
@@ -1469,7 +1469,7 @@ namespace trieste
         if (node == reified::Cap)
         {
           Pattern child_pattern = compile_pattern(node->at(0));
-          Token name = node->at(1)->type();
+          Token name = find_token(node->at(1)->location().view());
 
           return child_pattern[name];
         }
