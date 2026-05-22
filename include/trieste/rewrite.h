@@ -1241,7 +1241,7 @@ namespace trieste
       static PatternNodeDef in_group(Node node)
       {
         Node group = Group;
-        group->push_back(node);
+        group->push_back(node->clone());
 
         return PatternNodeDef(group);
       }
@@ -1255,7 +1255,7 @@ namespace trieste
         return node_;
       }
 
-      void push_back(PatternNodeDef child)
+      void push_back(PatternNodeDef& child)
       {
         node_->push_back(child);
       }
