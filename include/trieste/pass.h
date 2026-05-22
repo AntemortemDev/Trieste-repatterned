@@ -36,7 +36,7 @@ namespace trieste
 
     std::vector<detail::PatternTreeEffect<Node>> uncompiled_rules_;
 
-    std::vector<detail::PatternEffect<Node>> rules_;
+    // std::vector<detail::PatternEffect<Node>> rules_;
     detail::DefaultMap<
       detail::DefaultMap<std::vector<detail::PatternEffect<Node>>>>
       rule_map;
@@ -218,9 +218,9 @@ namespace trieste
     std::vector<Node> reify_patterns()
     {
       std::vector<Node> patterns;
-      for (auto& [pat, _] : rules_)
+      for (auto& pat_fx : uncompiled_rules_)
       {
-        patterns.push_back(pat.value.reify());
+        patterns.push_back(pat_fx.pattern());
       }
       return patterns;
     }
@@ -229,22 +229,11 @@ namespace trieste
     void compile_rules()
     {
       rule_map.clear();
-      rules_.clear();
 
-      for (detail::PatternTreeEffect<Node> u_rule : uncompiled_rules_)
+      for (auto& u_rule : uncompiled_rules_)
       {
-        // For debugging only, remove once debugging is done
-        // std::cout << u_rule.pattern()->str() << std::endl << std::endl;
+        auto rule = u_rule.compile();
 
-        // detail::PatternEffect<Node> c_rule = u_rule.compile();
-
-        // std::cout << c_rule.first.value.reify()->str() << std::endl << "-----------------------" << std::endl;
-
-        rules_.push_back(u_rule.compile());
-      }
-
-      for (auto& rule : rules_)
-      {
         const auto& starts = rule.first.value.get_starts();
         const auto& parents = rule.first.value.get_parents();
 
