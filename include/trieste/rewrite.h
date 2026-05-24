@@ -1371,9 +1371,9 @@ namespace trieste
       {
         // If both lhs and rhs are TokenMatches we merge the tokens into one
         // TokenMatch.
-        if (node_ == reified::TokenMatch && rhs == reified::TokenMatch)
+        if (node_->at(0) == reified::TokenMatch && rhs.node_->at(0) == reified::TokenMatch)
         {
-          node_->push_back({rhs.node_->begin(), rhs.node_->end()});
+          node_->at(0)->push_back({rhs.node_->at(0)->begin(), rhs.node_->at(0)->end()});
 
           return *this;
         }
