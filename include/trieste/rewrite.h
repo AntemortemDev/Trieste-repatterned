@@ -11,8 +11,8 @@
 #include <array>
 #include <cassert>
 #include <functional>
-#include <trieste/compiler.h>
 #include <string>
+#include <trieste/compiler.h>
 
 namespace trieste
 {
@@ -1209,9 +1209,7 @@ namespace trieste
       }
     };
 
-    // Class used for building pattern trees with the DSL syntax
-    // TODO: Check if this should inherit some form of intrusive pointer and
-    // how they are supposed to be used
+    // Class used for building pattern trees with the rewrite DSL syntax
     class PatternNodeDef
     {
     private:
@@ -1235,9 +1233,20 @@ namespace trieste
         return key;
       }
 
+      // Applies a unary operator to this instance, returns (Group << (type <<
+      // node_))
+      PatternNodeDef unary(Token type) const
+      {
+        Node unary_node = type;
+        unary_node->push_back(node_);
+
+        return in_group(unary_node);
+      }
+
     public:
       PatternNodeDef(Node node) : node_(node) {}
 
+      // Places the argument node in a Group node and returns the Group node
       static PatternNodeDef in_group(Node node)
       {
         Node group = Group;
@@ -1246,20 +1255,25 @@ namespace trieste
         return PatternNodeDef(group);
       }
 
+      // Implicit conversion to Node&
       operator Node&()
       {
         return node_;
       }
+
+      // Implicit conversion to Node
       operator Node() const
       {
         return node_;
       }
 
+      // Forward push_back function of wrapped Node
       void push_back(PatternNodeDef& child)
       {
         node_->push_back(child);
       }
 
+      // Forward push_back function of wrapped Node
       void push_back(Node child)
       {
         node_->push_back(child);
@@ -1284,19 +1298,18 @@ namespace trieste
       // Parse an action in the DSL
       PatternNodeDef operator()(std::function<bool(NodeRange&)>&& action) const
       {
+        // Store action in the action map
         Location action_key = register_action(
           std::forward<std::function<bool(NodeRange&)>>(action));
 
+        // Attach the location which stores the key of the action
         Node action_node = NodeDef::create(reified::Action, action_key);
         action_node->push_back(node_);
 
-        PatternNodeDef parent = PatternNodeDef(Group);
-        parent.push_back(action_node);
-
-        return parent;
+        return in_group(action_node);
       }
 
-      // Parse a name capture in the DSL
+      // Parse a capture in the DSL
       PatternNodeDef operator[](const Token& name) const
       {
         Node cap = reified::Cap;
@@ -1310,51 +1323,31 @@ namespace trieste
       // Parse an optional pattern in the DSL
       PatternNodeDef operator~() const
       {
-        Node opt = reified::Opt;
-
-        opt->push_back(node_);
-
-        return in_group(opt);
+        return unary(reified::Opt);
       }
 
       // Parse a positive lookahead in the DSL
       PatternNodeDef operator++() const
       {
-        Node pred = reified::Pred;
-
-        pred->push_back(node_);
-
-        return in_group(pred);
+        return unary(reified::Pred);
       }
 
       // Parse a negative lookahead in the DSL
       PatternNodeDef operator--() const
       {
-        Node neg_pred = reified::NegPred;
-
-        neg_pred->push_back(node_);
-
-        return in_group(neg_pred);
+        return unary(reified::NegPred);
       }
 
       // Parse a pattern repetition in the DSL
       PatternNodeDef operator++(int) const
       {
-        Node rep = reified::Rep;
-
-        rep->push_back(node_);
-
-        return in_group(rep);
+        return unary(reified::Rep);
       }
 
       // Parse a negated pattern in the DSL
       PatternNodeDef operator!() const
       {
-        Node not_node = reified::Not;
-
-        not_node->push_back(node_);
-
-        return in_group(not_node);
+        return unary(reified::Not);
       }
 
       // Parse a pattern sequence in the DSL
@@ -1369,11 +1362,14 @@ namespace trieste
       // Parse a choice between two patterns
       PatternNodeDef operator/(PatternNodeDef rhs) const
       {
-        // If both lhs and rhs are TokenMatches we merge the tokens into one
+        // If both lhs and rhs are TokenMatches we merge the tokens into the lhs
         // TokenMatch.
-        if (node_->at(0) == reified::TokenMatch && rhs.node_->at(0) == reified::TokenMatch)
+        if (
+          node_->at(0) == reified::TokenMatch &&
+          rhs.node_->at(0) == reified::TokenMatch)
         {
-          node_->at(0)->push_back({rhs.node_->at(0)->begin(), rhs.node_->at(0)->end()});
+          node_->at(0)->push_back(
+            {rhs.node_->at(0)->begin(), rhs.node_->at(0)->end()});
 
           return *this;
         }
@@ -1402,11 +1398,15 @@ namespace trieste
     template<typename T>
     using PatternEffect = std::pair<Located<Pattern>, Effect<T>>;
 
+    // Class representing a rewrite rule
     template<typename T>
     class PatternTreeEffect
     {
     private:
+      // The pattern of the rewrite rule
       Node top_;
+
+      // The effect of the rewrite rule
       Effect<T> effect_;
 
       Pattern compile_pattern(Node node)
@@ -1536,7 +1536,8 @@ namespace trieste
         return sequence;
       }
 
-      // Converts every child into the token corresponding to the child's location
+      // Converts every child into the token corresponding to the child's
+      // location
       std::vector<Token> get_child_tokens(Node node)
       {
         std::vector<Token> tokens;
@@ -1558,7 +1559,8 @@ namespace trieste
         return top_;
       }
 
-      // Compiles the pattern tree into a Pattern-object and returns it as a PatternEffect
+      // Compiles the pattern tree into a Pattern-object and returns it as a
+      // PatternEffect
       PatternEffect<T> compile()
       {
         return {compile_pattern(top_), effect_};
