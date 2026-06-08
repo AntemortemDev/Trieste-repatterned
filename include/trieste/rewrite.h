@@ -593,9 +593,9 @@ namespace trieste
     public:
       Rep(PatternPtr pattern_) : pattern(pattern_)
       {
-        if (pattern->has_captures())
-          throw std::runtime_error(
-            "Captures not allowed inside iteration (Pattern++)!");
+        // if (pattern->has_captures())
+        //   throw std::runtime_error(
+        //     "Captures not allowed inside iteration (Pattern++)!");
       }
 
       PatternPtr clone() const& override
@@ -645,9 +645,9 @@ namespace trieste
     public:
       Not(PatternPtr pattern_) : pattern(pattern_)
       {
-        if (pattern->has_captures())
-          throw std::runtime_error(
-            "Captures not allowed inside Not (!Pattern)!");
+        // if (pattern->has_captures())
+        //   throw std::runtime_error(
+        //     "Captures not allowed inside Not (!Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -691,9 +691,9 @@ namespace trieste
       Choice(PatternPtr first_, PatternPtr second_)
       : first(first_), second(second_)
       {
-        if (CapturesLeft != first->has_captures())
-          throw std::runtime_error(
-            "Static and dynamic view of captures disagree.");
+        // if (CapturesLeft != first->has_captures())
+        //   throw std::runtime_error(
+        //     "Static and dynamic view of captures disagree.");
       }
 
       bool has_captures_local() const& override
@@ -760,11 +760,11 @@ namespace trieste
         return intrusive_ptr<InsideStar>::make(*this);
       }
 
-      PatternPtr custom_rep() override
-      {
-        throw std::runtime_error(
-          "Rep(InsideStar) not allowed! ((In(T,...)++)++");
-      }
+      // PatternPtr custom_rep() override
+      // {
+      //   throw std::runtime_error(
+      //     "Rep(InsideStar) not allowed! ((In(T,...)++)++");
+      // }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
@@ -847,10 +847,10 @@ namespace trieste
         return intrusive_ptr<First>::make(*this);
       }
 
-      PatternPtr custom_rep() override
-      {
-        throw std::runtime_error("Rep(First) not allowed! (Start)++");
-      }
+      // PatternPtr custom_rep() override
+      // {
+        // throw std::runtime_error("Rep(First) not allowed! (Start)++");
+      // }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
@@ -874,14 +874,14 @@ namespace trieste
         return intrusive_ptr<Last>::make(*this);
       }
 
-      PatternPtr custom_rep() override
-      {
-        throw std::runtime_error("Rep(Last) not allowed! (End)++");
-      }
+      // PatternPtr custom_rep() override
+      // {
+      //   throw std::runtime_error("Rep(Last) not allowed! (End)++");
+      // }
 
       virtual void set_continuation(PatternPtr) override
       {
-        throw std::runtime_error("Continuation not allowed after `End`");
+        // throw std::runtime_error("Continuation not allowed after `End`");
       }
 
       bool match(NodeIt& it, const Node& parent, Match&) const& override
@@ -957,9 +957,9 @@ namespace trieste
     public:
       Pred(PatternPtr pattern_) : pattern(pattern_)
       {
-        if (pattern->has_captures())
-          throw std::runtime_error(
-            "Captures not allowed inside Pred (++Pattern)!");
+        // if (pattern->has_captures())
+        //   throw std::runtime_error(
+        //     "Captures not allowed inside Pred (++Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -967,10 +967,10 @@ namespace trieste
         return intrusive_ptr<Pred>::make(*this);
       }
 
-      PatternPtr custom_rep() override
-      {
-        throw std::runtime_error("Rep(Pred) not allowed! (++Pattern)++");
-      }
+      // PatternPtr custom_rep() override
+      // {
+      //   throw std::runtime_error("Rep(Pred) not allowed! (++Pattern)++");
+      // }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
@@ -998,9 +998,9 @@ namespace trieste
     public:
       NegPred(PatternPtr pattern_) : pattern(pattern_)
       {
-        if (pattern->has_captures())
-          throw std::runtime_error(
-            "Captures not allowed inside NegPred (--Pattern)!");
+        // if (pattern->has_captures())
+        //   throw std::runtime_error(
+        //     "Captures not allowed inside NegPred (--Pattern)!");
       }
 
       PatternPtr clone() const& override
@@ -1008,10 +1008,10 @@ namespace trieste
         return intrusive_ptr<NegPred>::make(*this);
       }
 
-      PatternPtr custom_rep() override
-      {
-        throw std::runtime_error("Rep(NegPred) not allowed! (--Pattern)++");
-      }
+      // PatternPtr custom_rep() override
+      // {
+      //   throw std::runtime_error("Rep(NegPred) not allowed! (--Pattern)++");
+      // }
 
       bool match(NodeIt& it, const Node& parent, Match& match) const& override
       {
