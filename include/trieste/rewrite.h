@@ -13,6 +13,7 @@
 #include <functional>
 #include <string>
 #include <trieste/compiler.h>
+#include <string>
 
 namespace trieste
 {
@@ -1220,6 +1221,7 @@ namespace trieste
       }
     };
 
+<<<<<<< HEAD
     // Class used for building pattern trees with the rewrite DSL syntax
     class PatternNodeDef
     {
@@ -1229,6 +1231,41 @@ namespace trieste
 
       // Incrementing counter for assigning keys to pairs in action_map
       inline static uint32_t action_counter = 0;
+=======
+
+    // Class used for building pattern trees with the DSL syntax
+    // TODO: Check if this should inherit some form of intrusive pointer and
+    // how they are supposed to be used
+    class PatternNodeDef
+    {
+      private:
+        // The associated node in the tree
+        Node node;
+
+        // Incrementing counter for assigning keys to pairs in action_map
+        static uint32_t action_counter;
+
+        // Map storing lambdas defined by the action operator of the DSL
+        template<typename F>
+        static std::map<std::string, F> action_map;
+
+        // Stores an action and returns a Location which is used as a lookup-key
+        template<typename F>
+        static Location register_action(F action)
+        {
+          Location key = Location(std::to_string(++action_counter));
+          action_map[key.view()] = action;
+
+          return key;
+        }
+
+
+      public:
+        PatternNodeDef(Node node) : node(node) {}
+      
+        operator Node&() { return node; }
+        operator Node() const { return node; }
+>>>>>>> d573865 (Merge trieste/main)
 
       // Map storing lambdas defined by the action operator of the DSL
       inline static std::map<std::string, std::function<bool(NodeRange&)>>
@@ -1306,6 +1343,7 @@ namespace trieste
         return action_map[action_key];
       }
 
+<<<<<<< HEAD
       // Parse an action in the DSL
       PatternNodeDef operator()(std::function<bool(NodeRange&)>&& action) const
       {
@@ -1393,17 +1431,187 @@ namespace trieste
 
         return in_group(choice);
       }
+=======
+        Node parent() { return node->parent(); }
+
+        // Returns the action associated with action_loc, throws std::runtime_error
+        // if no such action exists
+        template<typename F>
+        static F lookup_action(Location action_loc)
+        {
+          if(!action_map.contains(action_loc.view()))
+          {
+            throw std::runtime_error(
+              "Attempted to fetch action with location " 
+              + action_loc.view() + ", no such action exists");
+          }
+
+          return action_map[action_node.view()];
+        }
+
+        // Parse an action in the DSL
+        template<typename F>
+        PatternNodeDef operator()(F&& action) const
+        {
+          Location action_key = register_action(std::forward<F>(action));
+          
+          PatternNodeDef action_node = PatternNodeDef(
+            instrusive_ptr::make(
+              NodeDef::create(reified::Action, action_key)
+            )
+          );
+
+          Node parent = Group;
+          parent->push_back(action_node);
+
+          return action_node;
+        }
+
+        // Parse a name capture in the DSL
+        PatternNodeDef operator[](const trieste::Token& name) const
+        {
+          PatternNodeDef cap = PatternNodeDef(reified::Cap);
+
+          cap.node->push_back(node->parent());
+          cap.node->push_back(NodeDef::create(reified::Token, Location(name.str())));
+
+          Node parent = Group;
+          parent->push_back(cap);
+>>>>>>> d573865 (Merge trieste/main)
 
       // Parse a child relationship in the DSL
       PatternNodeDef operator<<(PatternNodeDef rhs) const
       {
         Node children_node = reified::Children;
 
+<<<<<<< HEAD
         children_node->push_back(node_);
         children_node->push_back(rhs.node_);
 
         return in_group(children_node);
       }
+=======
+        // TODO: add comment, don't know what Opt represents (Optional?)
+        PatternNodeDef operator~() const 
+        {
+          PatternNodeDef opt = PatternNodeDef(reified::Opt);
+
+          opt.node->push_back(node->parent());
+
+          Node parent = Group;
+          parent->push_back(opt);
+
+          return opt;
+        }
+
+        // TODO: add comment, don't know what Pred represents (Predicate?)
+        PatternNodeDef operator++() const 
+        {
+          PatternNodeDef pred = PatternNodeDef(reified::Pred);
+
+          pred.node->push_back(node->parent());
+
+          Node parent = Group;
+          parent->push_back(pred);
+
+          return pred;
+        }
+
+        // TODO: same as above
+        PatternNodeDef operator--() const 
+        {
+          PatternNodeDef neg_pred = PatternNodeDef(reified::NegPred);
+
+          neg_pred.node->push_back(node->parent());
+
+          Node parent = Group;
+          parent->push_back(neg_pred);
+
+          return neg_pred;
+        }
+
+        // Parses a pattern repetition in the DSL
+        PatternNodeDef operator++(int) const 
+        {
+          PatternNodeDef rep = PatternNodeDef(reified::Rep);
+
+          rep.node->push_back(node->parent());
+
+          Node parent = Group;
+          parent->push_back(rep);
+
+          return rep;
+        }
+
+        // Parses a negated pattern in the DSL
+        PatternNodeDef operator!() const
+        {
+          PatternNodeDef not_node = PatternNodeDef(reified::Not);
+
+          not_node.node->push_back(node->parent());
+          
+          Node parent = Group;
+          parent->push_back(not_node);
+
+          return not_node;
+        }
+
+        // Parses a pattern sequence in the DSL
+        PatternNodeDef operator*(PatternNodeDef rhs) const
+        {
+          Node lhs_parent = node->parent();
+          Node rhs_parent = rhs.node->parent();
+
+          for(Node child : *rhs_parent)
+          {
+            lhs_parent->push_back(child);
+          }
+
+          return *this;
+        }
+
+        // Parses a choice between two patterns
+        PatternNodeDef operator/(PatternNodeDef rhs) const
+        {
+          // If both lhs and rhs are TokenMatches we merge the tokens into one TokenMatch.
+          if (node == reified::TokenMatch && rhs == reified::TokenMatch) {
+            Node lhs_parent = node->parent();
+            Node rhs_parent = rhs.node->parent();
+
+            for(Node child : *rhs_parent)
+            {
+              lhs_parent->push_back(child);
+            }
+
+            return *this;
+          }
+
+          // Otherwise parse into a choice node.
+          PatternNodeDef choice = PatternNodeDef(reified::Choice);
+
+          choice.push_back(node->parent());
+          choice.push_back(rhs.node->parent());
+
+          Node parent = Group;
+          parent->push_back(choice);
+
+          return choice;
+        }
+
+        // Parses a child relationship in the DSL
+        PatternNodeDef operator<<(PatternNodeDef rhs) const
+        {
+          PatternNodeDef children_node = PatternNodeDef(reified::Children);
+
+          children_node.push_back(node->parent());
+          children_node.push_back(rhs.node->parent());
+
+          Node parent = Group;
+          parent->push_back(children_node);
+
+          return children_node;
+        }
+>>>>>>> d573865 (Merge trieste/main)
     };
 
     template<typename T>
@@ -1620,6 +1828,7 @@ namespace trieste
     };
   }
 
+<<<<<<< HEAD
   // TODO: Return a pair of <Node, Effect<T>> instead.
   // TODO: Add Top node as the grandparent of the PatternNodeDef to make the
   // tree well-formed
@@ -1627,6 +1836,13 @@ namespace trieste
   inline auto
   operator>>(detail::Located<detail::PatternNodeDef> pattern, F effect)
     -> detail::PatternTreeEffect<decltype(effect(std::declval<Match&>()))>
+=======
+  // TODO: Return a pair of <Node, Effect<T>> possibly Located<Node> instead.
+  // TODO: Add Top node as the grandparent of the PatternNodeDef to make the tree well-formed
+  template<typename F>
+  inline auto operator>>(detail::Located<detail::Pattern> pattern, F effect)
+    -> detail::PatternEffect<decltype(effect(std::declval<Match&>()))>
+>>>>>>> d573865 (Merge trieste/main)
   {
     Node top = Top;
     top->push_back(pattern.value);
@@ -1634,6 +1850,7 @@ namespace trieste
     return {top, effect};
   }
 
+<<<<<<< HEAD
   inline const auto Any = detail::PatternNodeDef::in_group(reified::Any);
   inline const auto Start = detail::PatternNodeDef::in_group(reified::First);
   inline const auto End = detail::PatternNodeDef::in_group(reified::Last);
@@ -1642,6 +1859,27 @@ namespace trieste
   {
     Node match = reified::TokenMatch;
     match->push_back(NodeDef::create(reified::Token, Location(type.str())));
+=======
+  // Helper function for creating valid pattern tokens by adding a Group
+  // node as parent
+  detail::PatternNodeDef create_single_pattern(Token token)
+  {
+    detail::PatternNodeDef pattern_node = detail::PatternNodeDef(token);
+    Node parent = Group;
+    parent->push_back(pattern_node);
+
+    return pattern_node;
+  }
+
+  inline const auto Any = create_single_pattern(reified::Any);
+  inline const auto Start = create_single_pattern(reified::First);
+  inline const auto End = create_single_pattern(reified::Last);
+
+
+  inline detail::PatternNodeDef T(const Token& type)
+  {
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+>>>>>>> d573865 (Merge trieste/main)
 
     return detail::PatternNodeDef::in_group(match);
   }
@@ -1650,7 +1888,11 @@ namespace trieste
   inline detail::PatternNodeDef
   T(const Token& type1, const Token& type2, const Ts&... types)
   {
+<<<<<<< HEAD
     Node match = reified::TokenMatch;
+=======
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+>>>>>>> d573865 (Merge trieste/main)
 
     std::initializer_list<Token> tokens{type1, type2, types...};
     for (const Token& t : tokens)
@@ -1663,9 +1905,13 @@ namespace trieste
 
   inline detail::PatternNodeDef T(const Token& type, const std::string& r)
   {
+<<<<<<< HEAD
     Node match = reified::RegexMatch;
     match->push_back(NodeDef::create(reified::Token, Location(type.str())));
     match->push_back(NodeDef::create(reified::Regex, Location(r)));
+=======
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+>>>>>>> d573865 (Merge trieste/main)
 
     return detail::PatternNodeDef::in_group(match);
   }
@@ -1673,7 +1919,11 @@ namespace trieste
   template<typename... Ts>
   inline detail::PatternNodeDef In(const Token& type1, const Ts&... types)
   {
+<<<<<<< HEAD
     Node inside = reified::Inside;
+=======
+    detail::PatternNodeDef group = detail::PatternNodeDef(Group);
+>>>>>>> d573865 (Merge trieste/main)
 
     std::initializer_list<Token> tokens{type1, types...};
     for (const Token& type : tokens)
