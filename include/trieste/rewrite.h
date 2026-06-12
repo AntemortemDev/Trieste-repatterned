@@ -1379,10 +1379,12 @@ namespace trieste
           node_->at(0) == reified::TokenMatch &&
           rhs.node_->at(0) == reified::TokenMatch)
         {
-          node_->at(0)->push_back(
+          PatternNodeDef clone = PatternNodeDef(node_->clone());
+
+          clone.node_->at(0)->push_back(
             {rhs.node_->at(0)->begin(), rhs.node_->at(0)->end()});
 
-          return *this;
+          return clone;
         }
 
         // Otherwise parse into a choice node.
